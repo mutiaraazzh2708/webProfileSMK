@@ -2,7 +2,7 @@
 $HOST = "localhost";
 $USER = "root"; 
 $PASS = "";
-$DB   = "db_smk";
+$DB   = "dbEsemka";
 
 $koneksi = mysqli_connect($HOST, $USER, $PASS, $DB);
 if (!$koneksi) {

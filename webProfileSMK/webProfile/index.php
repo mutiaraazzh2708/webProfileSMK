@@ -1,9 +1,55 @@
+<?php 
+include 'config/koneksi.php';
+
+// Fungsi untuk mengambil data sekolah
+function getDataSekolah($koneksi) {
+    $dataSekolah = [];
+    $sql = "SELECT id_smk, nama_sekolah, alamat, latitude, longitude, jumlah_siswa 
+            FROM tb_smk 
+            WHERE latitude IS NOT NULL 
+            AND longitude IS NOT NULL
+            AND TRIM(latitude) != ''
+            AND TRIM(longitude) != ''
+            AND latitude != 0
+            AND longitude != 0";
+    
+    $result = mysqli_query($koneksi, $sql);
+    
+    if ($result && mysqli_num_rows($result) > 0) {
+        while ($row = mysqli_fetch_assoc($result)) {
+            $lat = floatval($row['latitude']);
+            $lng = floatval($row['longitude']);
+            
+            // Validasi koordinat untuk Kota Padang (sekitar -1.0 sampai -0.8 dan 100.3 sampai 100.5)
+            if ($lat != 0 && $lng != 0 && $lat >= -1.2 && $lat <= -0.7 && $lng >= 100.2 && $lng <= 100.5) {
+                $dataSekolah[] = [
+                    'id' => (int)$row['id_smk'],
+                    'nama' => trim($row['nama_sekolah'] ?? ''),
+                    'alamat' => trim($row['alamat'] ?? ''),
+                    'lat' => $lat,
+                    'lng' => $lng,
+                    'jumlah_siswa' => (int)($row['jumlah_siswa'] ?? 0)
+                ];
+            }
+        }
+    }
+    
+    return $dataSekolah;
+}
+
+// Ambil data sekolah
+$dataSekolah = getDataSekolah($koneksi);
+$totalSekolah = count($dataSekolah);
+
+// Tutup koneksi DB
+mysqli_close($koneksi);
+?>
 <!DOCTYPE html>
 <html lang="id">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SIG SMK Negeri Kota Padang</title>
+    <title>SIG ESEMKA Padang</title>
     
     <!-- Bootstrap 5 -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
@@ -20,14 +66,154 @@
     <!-- Custom CSS -->
     <link rel="stylesheet" href="assets/css/style.css">
 
+    <style>
+        .map-container { 
+            width: 100%; 
+            height: 520px; 
+            margin-top: 20px; 
+        }
+        
+        #map { 
+            width: 100%; 
+            height: 100%; 
+            z-index: 1;
+        }
+
+        .custom-marker {
+            background-color: #dc3545;
+            border: 3px solid white;
+            border-radius: 50%;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+        }
+
+        .leaflet-popup-content-wrapper {
+            border-radius: 12px;
+            padding: 0;
+        }
+
+        .custom-popup .leaflet-popup-content {
+            margin: 0;
+            min-width: 280px;
+        }
+
+        .popup-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 15px;
+            border-radius: 12px 12px 0 0;
+        }
+
+        .popup-header h5 {
+            margin: 0;
+            font-size: 16px;
+            font-weight: 600;
+        }
+
+        .popup-body {
+            padding: 15px;
+            font-size: 14px;
+        }
+
+        .popup-info {
+            display: flex;
+            gap: 10px;
+            align-items: flex-start;
+            margin-bottom: 10px;
+        }
+
+        .popup-info i {
+            color: #667eea;
+            margin-top: 2px;
+        }
+
+        .popup-info-text {
+            line-height: 1.4;
+            flex: 1;
+        }
+
+        .popup-btn {
+            display: inline-flex;
+            gap: 8px;
+            align-items: center;
+            padding: 8px 16px;
+            border: none;
+            cursor: pointer;
+            border-radius: 8px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            font-size: 14px;
+            font-weight: 500;
+            transition: transform 0.2s;
+            width: 100%;
+            justify-content: center;
+        }
+
+        .popup-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }
+
+        .search-results {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            max-height: 400px;
+            overflow-y: auto;
+            z-index: 1000;
+            display: none;
+            margin-top: 8px;
+        }
+
+        .search-results.active {
+            display: block;
+        }
+
+        .search-result-item {
+            padding: 12px 16px;
+            border-bottom: 1px solid #f0f0f0;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+
+        .search-result-item:hover {
+            background-color: #f8f9fa;
+        }
+
+        .search-result-item:last-child {
+            border-bottom: none;
+        }
+
+        .result-name {
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 4px;
+        }
+
+        .result-address {
+            font-size: 13px;
+            color: #666;
+        }
+
+        .search-box {
+            position: relative;
+        }
+
+        .no-results {
+            text-align: center;
+            padding: 20px;
+            color: #999;
+        }
+    </style>
 </head>
 <body>
     
-    <?php 
-        include 'template/navbar.php';
-    ?>
+    <?php include 'template/navbar.php'; ?>
 
-     <div class="container-fluid">
+    <div class="container-fluid">
         <!-- Hero Carousel Section -->
         <div class="carousel-section">
             <div id="heroCarousel" class="carousel slide" data-bs-ride="carousel">
@@ -39,31 +225,34 @@
                 </div>
                 <div class="carousel-inner">
                     <div class="carousel-item active">
-                        <img src="https://images.unsplash.com/photo-1523050854058-8df90110c9f1?w=1200&h=500&fit=crop" class="d-block w-100" alt="Pendidikan Berkualitas">
+                        <img src="https://picsum.photos/1200/500?random=1" class="d-block w-100" alt="Pendidikan Berkualitas">
                         <div class="carousel-caption">
                             <h2>Sistem Informasi Geografis</h2>
                             <p>SMK Negeri Kota Padang - Menuju Pendidikan Vokasi Berkualitas</p>
                             <button class="carousel-btn">Jelajahi Sekarang</button>
                         </div>
                     </div>
+                    
                     <div class="carousel-item">
-                        <img src="https://images.unsplash.com/photo-1509062522246-3755977927d7?w=1200&h=500&fit=crop" alt="Fasilitas Modern">
+                        <img src="https://picsum.photos/1200/500?random=2" class="d-block w-100" alt="Fasilitas Modern">
                         <div class="carousel-caption">
                             <h2>Fasilitas Lengkap & Modern</h2>
                             <p>Laboratorium dan Workshop Berstandar Industri</p>
                             <button class="carousel-btn">Lihat Fasilitas</button>
                         </div>
                     </div>
+                    
                     <div class="carousel-item">
-                        <img src="https://images.unsplash.com/photo-1427504494785-3a9ca7044f45?w=1200&h=500&fit=crop" alt="Prestasi Siswa">
+                        <img src="https://picsum.photos/1200/500?random=3" class="d-block w-100" alt="Prestasi Siswa">
                         <div class="carousel-caption">
                             <h2>Prestasi Membanggakan</h2>
                             <p>Siswa Berprestasi di Tingkat Nasional & Internasional</p>
                             <button class="carousel-btn">Lihat Prestasi</button>
                         </div>
                     </div>
+                    
                     <div class="carousel-item">
-                        <img src="https://images.unsplash.com/photo-1427504494785-3a9ca7044f45?w=1200&h=500&fit=crop" alt="Program Keahlian">
+                        <img src="https://picsum.photos/1200/500?random=4" class="d-block w-100" alt="Program Keahlian">
                         <div class="carousel-caption">
                             <h2>Beragam Program Keahlian</h2>
                             <p>Pilih Jurusan Sesuai Minat dan Bakat Anda</p>
@@ -82,7 +271,6 @@
             </div>
         </div>
 
-    <div class="container-fluid">
         <!-- Search Section -->
         <div class="search-section">
             <h3 class="search-title">
@@ -114,7 +302,7 @@
                 <div class="map-info">
                     <span class="info-badge">
                         <i class="fas fa-school me-1"></i>
-                        <span id="totalSekolah">5</span> Sekolah
+                        <span id="totalSekolah"><?php echo $totalSekolah; ?></span> Sekolah
                     </span>
                 </div>
             </div>
@@ -122,89 +310,51 @@
         </div>
     </div>
 
-
-    <?php 
-        include 'template/footer.php';
-    ?>
+    <?php include 'template/footer.php'; ?>
     
     <!-- Bootstrap JS -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     
     <!-- Leaflet JS -->
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    
-    <script>
-        // Data SMK (nanti akan diambil dari database via PHP/AJAX)
-        const dataSekolah = [
-            {
-                id: 1,
-                nama: "SMKN 1 Padang",
-                alamat: "Jl. Belanti Raya No.11, Lolong Belanti, Kec. Padang Utara",
-                lat: -0.9290,
-                lng: 100.3543,
-                jumlahSiswa: 1200,
-                programKeahlian: "Teknik Komputer Jaringan, Rekayasa Perangkat Lunak, Multimedia"
-            },
-            {
-                id: 2,
-                nama: "SMKN 2 Padang",
-                alamat: "Jl. Prof. M. Yamin SH No.167, Ulak Karang Utara",
-                lat: -0.9471,
-                lng: 100.3672,
-                jumlahSiswa: 1100,
-                programKeahlian: "Akuntansi, Administrasi Perkantoran, Pemasaran"
-            },
-            {
-                id: 3,
-                nama: "SMKN 3 Padang",
-                alamat: "Jl. S. Parman No.2, Ulak Karang, Kec. Padang Utara",
-                lat: -0.9380,
-                lng: 100.3590,
-                jumlahSiswa: 950,
-                programKeahlian: "Tata Boga, Tata Busana, Perhotelan"
-            },
-            {
-                id: 4,
-                nama: "SMKN 4 Padang",
-                alamat: "Jl. Teluk Bayur, Air Pacah, Kec. Koto Tangah",
-                lat: -0.9800,
-                lng: 100.3800,
-                jumlahSiswa: 800,
-                programKeahlian: "Teknik Mesin, Teknik Otomotif, Teknik Listrik"
-            },
-            {
-                id: 5,
-                nama: "SMKN 5 Padang",
-                alamat: "Jl. Khatib Sulaiman, Alai Parak Kopi, Kec. Padang Utara",
-                lat: -0.9200,
-                lng: 100.3620,
-                jumlahSiswa: 1050,
-                programKeahlian: "Teknik Konstruksi Gedung, Teknik Gambar Bangunan"
-            }
-        ];
 
-        // Inisialisasi Peta
-        const map = L.map('map').setView([-0.9471, 100.3672], 13);
+    <script>
+        // Data sekolah dari PHP
+        const dataSekolah = <?php echo json_encode($dataSekolah, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT); ?>;
+        
+        console.log('Total SMK loaded:', dataSekolah.length);
+        console.log('Data Sekolah:', dataSekolah);
+
+        // Konfigurasi Peta
+        const mapConfig = {
+            center: [-0.9471, 100.3672],
+            zoom: 13,
+            maxZoom: 19
+        };
+
+        // Inisialisasi peta
+        const map = L.map('map').setView(mapConfig.center, mapConfig.zoom);
 
         // Tile Layer
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             attribution: '© OpenStreetMap contributors',
-            maxZoom: 19
+            maxZoom: mapConfig.maxZoom
         }).addTo(map);
 
         // Custom Icon
         const customIcon = L.divIcon({
             className: 'custom-marker',
-            iconSize: [40, 40],
-            iconAnchor: [20, 40],
-            popupAnchor: [0, -40]
+            iconSize: [30, 30],
+            iconAnchor: [15, 15],
+            popupAnchor: [0, -15]
         });
 
-        // Tambahkan Marker
-        dataSekolah.forEach(sekolah => {
-            const marker = L.marker([sekolah.lat, sekolah.lng], { icon: customIcon }).addTo(map);
-            
-            const popupContent = `
+        // Simpan referensi marker
+        const markers = {};
+
+        // Fungsi untuk membuat popup content
+        function createPopupContent(sekolah) {
+            return `
                 <div class="popup-header">
                     <h5>${sekolah.nama}</h5>
                 </div>
@@ -215,27 +365,44 @@
                     </div>
                     <div class="popup-info">
                         <i class="fas fa-users"></i>
-                        <div class="popup-info-text"><strong>${sekolah.jumlahSiswa}</strong> Siswa</div>
-                    </div>
-                    <div class="popup-info">
-                        <i class="fas fa-graduation-cap"></i>
-                        <div class="popup-info-text">${sekolah.programKeahlian}</div>
+                        <div class="popup-info-text"><strong>${sekolah.jumlah_siswa}</strong> Siswa</div>
                     </div>
                     <button class="popup-btn" onclick="lihatProfil(${sekolah.id})">
-                        <i class="fas fa-eye me-2"></i>Lihat Profil Lengkap
+                        <i class="fas fa-eye"></i>Lihat Profil Lengkap
                     </button>
                 </div>
             `;
-            
-            marker.bindPopup(popupContent, {
-                className: 'custom-popup',
-                maxWidth: 280
-            });
+        }
+
+        // Buat marker dari dataSekolah
+        dataSekolah.forEach((sekolah, index) => {
+            try {
+                if (!sekolah.lat || !sekolah.lng) {
+                    console.warn(`Sekolah ${sekolah.nama} tidak memiliki koordinat valid`);
+                    return;
+                }
+
+                const marker = L.marker([sekolah.lat, sekolah.lng], { 
+                    icon: customIcon,
+                    title: sekolah.nama
+                }).addTo(map);
+
+                marker.bindPopup(createPopupContent(sekolah), { 
+                    className: 'custom-popup', 
+                    maxWidth: 320 
+                });
+
+                // Simpan referensi marker
+                markers[sekolah.id] = marker;
+
+                console.log(`Marker ${index + 1} created for:`, sekolah.nama);
+            } catch (err) {
+                console.error('Error creating marker for', sekolah.nama, err);
+            }
         });
 
         // Fungsi Lihat Profil
         function lihatProfil(id) {
-            // Redirect ke halaman profil (nanti buat file profil.php?id=...)
             window.location.href = `profil.php?id=${id}`;
         }
 
@@ -244,70 +411,90 @@
         const searchResults = document.getElementById('searchResults');
         const searchBtn = document.getElementById('searchBtn');
 
-        searchInput.addEventListener('input', function() {
-            const query = this.value.toLowerCase().trim();
-            
-            if (query.length < 2) {
+        // Fungsi untuk normalize string (remove diacritics, lowercase)
+        function normalizeString(str) {
+            return str.toLowerCase()
+                .normalize("NFD")
+                .replace(/[\u0300-\u036f]/g, "")
+                .trim();
+        }
+
+        // Fungsi untuk melakukan pencarian
+        function performSearch(query) {
+            if (!query || query.length < 2) {
                 searchResults.classList.remove('active');
                 return;
             }
 
-            const filtered = dataSekolah.filter(sekolah => 
-                sekolah.nama.toLowerCase().includes(query) || 
-                sekolah.alamat.toLowerCase().includes(query)
-            );
+            const normalizedQuery = normalizeString(query);
+            
+            const filtered = dataSekolah.filter(s => {
+                const nama = normalizeString(s.nama || '');
+                const alamat = normalizeString(s.alamat || '');
+                return nama.includes(normalizedQuery) || alamat.includes(normalizedQuery);
+            });
 
-            if (filtered.length > 0) {
-                searchResults.innerHTML = filtered.map(sekolah => `
-                    <div class="search-result-item" onclick="selectSekolah(${sekolah.lat}, ${sekolah.lng}, '${sekolah.nama}')">
-                        <div class="result-name">${sekolah.nama}</div>
-                        <div class="result-address">${sekolah.alamat}</div>
+            displaySearchResults(filtered);
+        }
+
+        // Fungsi untuk menampilkan hasil pencarian
+        function displaySearchResults(results) {
+            if (results.length > 0) {
+                searchResults.innerHTML = results.map(s => `
+                    <div class="search-result-item" data-id="${s.id}">
+                        <div class="result-name">${s.nama}</div>
+                        <div class="result-address">${s.alamat}</div>
                     </div>
                 `).join('');
                 searchResults.classList.add('active');
+
+                // Add click listeners
+                document.querySelectorAll('.search-result-item').forEach(item => {
+                    item.addEventListener('click', function() {
+                        const id = parseInt(this.dataset.id);
+                        const sekolah = dataSekolah.find(s => s.id === id);
+                        if (sekolah) {
+                            selectSekolah(sekolah);
+                        }
+                    });
+                });
             } else {
-                searchResults.innerHTML = `
-                    <div class="search-result-item" style="text-align: center; color: #999;">
-                        Tidak ada hasil ditemukan
-                    </div>
-                `;
+                searchResults.innerHTML = '<div class="no-results">Tidak ada hasil ditemukan</div>';
                 searchResults.classList.add('active');
             }
-        });
-
-        function selectSekolah(lat, lng, nama) {
-            map.setView([lat, lng], 16);
-            searchResults.classList.remove('active');
-            searchInput.value = nama;
-            
-            // Buka popup marker yang dipilih
-            map.eachLayer(layer => {
-                if (layer instanceof L.Marker) {
-                    const markerLatLng = layer.getLatLng();
-                    if (markerLatLng.lat === lat && markerLatLng.lng === lng) {
-                        layer.openPopup();
-                    }
-                }
-            });
         }
 
-        // Close search results ketika klik di luar
-        document.addEventListener('click', function(e) {
-            if (!e.target.closest('.search-box')) {
-                searchResults.classList.remove('active');
+        // Fungsi untuk memilih sekolah dari hasil pencarian
+        function selectSekolah(sekolah) {
+            map.setView([sekolah.lat, sekolah.lng], 16);
+            searchResults.classList.remove('active');
+            searchInput.value = sekolah.nama;
+
+            // Buka popup marker yang dipilih
+            if (markers[sekolah.id]) {
+                markers[sekolah.id].openPopup();
             }
+        }
+
+        // Event listener untuk input search
+        searchInput.addEventListener('input', function() {
+            performSearch(this.value);
         });
 
-        // Search button
+        // Event listener untuk tombol search
         searchBtn.addEventListener('click', function() {
-            const query = searchInput.value.toLowerCase().trim();
-            if (query) {
-                const found = dataSekolah.find(sekolah => 
-                    sekolah.nama.toLowerCase().includes(query)
-                );
-                if (found) {
-                    selectSekolah(found.lat, found.lng, found.nama);
-                }
+            const query = searchInput.value.trim();
+            if (!query) return;
+
+            const normalizedQuery = normalizeString(query);
+            const found = dataSekolah.find(s => 
+                normalizeString(s.nama || '').includes(normalizedQuery)
+            );
+
+            if (found) {
+                selectSekolah(found);
+            } else {
+                performSearch(query);
             }
         });
 
@@ -316,6 +503,18 @@
             if (e.key === 'Enter') {
                 searchBtn.click();
             }
+        });
+
+        // Close search results ketika klik di luar
+        document.addEventListener('click', function(e) {
+            if (!e.target.closest('.search-box')) {
+                searchResults.classList.remove('active');
+            }
+        });
+
+        // Resize map ketika window di-resize
+        window.addEventListener('resize', function() {
+            map.invalidateSize();
         });
     </script>
 </body>

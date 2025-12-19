@@ -3,7 +3,7 @@
 <!-- Footer -->
     <footer>
         <div class="container">
-            <p>&copy; 2024 SIG SMK Kota Padang. Dikembangkan dengan <i class="fas fa-heart text-danger"></i> untuk pendidikan Indonesia.</p>
+            <p>&copy; 2025 develope by ESEMKA Team.</p>
         </div>
     </footer>
 </html>

@@ -340,6 +340,8 @@
         
         /* Responsive */
         @media (max-width: 768px) {
+            
+        }
             .hero-tentang h1 {
                 font-size: 2rem;
             }
@@ -356,9 +358,10 @@
                 grid-template-columns: repeat(2, 1fr);
                 gap: 1rem;
             }
-        }
+        
+    
       </style>
-</head>
+</head>     
 <body>
 <!-- Hero section -->
   <section class="hero-tentang">
